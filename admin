@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #FFF7EA; color: #1B2B22; margin: 0; padding: 20px; }
+    h1, h2 { color: #1F4D3A; margin-top: 0; }
+    .hidden { display: none !important; }
+    .box { background: #fff; border-radius: 18px; padding: 20px; max-width: 420px; margin: 40px auto; }
+    label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+    input, select { height: 46px; border: 1.5px solid #B8AD96; border-radius: 10px; padding: 0 12px; font-size: 15px; background: #fff; }
+    .btn { height: 46px; padding: 0 18px; border: 0; border-radius: 10px; background: #1F4D3A; color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; }
+    .btn.orange { background: #C2410C; }
+    .btn.line { background: transparent; border: 1.5px solid #1F4D3A; color: #1F4D3A; }
+    .btn.danger { background: transparent; border: 1.5px solid #9A3412; color: #9A3412; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+    .list { flex: 1; min-width: 320px; background: #fff; border-radius: 18px; padding: 8px 16px; }
+    .form { width: 320px; background: #fff; border-radius: 18px; padding: 20px; }
+    .row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #F0E6D2; flex-wrap: wrap; }
+    .row:last-child { border-bottom: 0; }
+    .row img, .row .ph { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: #F8D9A0; }
+    .info { flex: 1; min-width: 120px; }
+    .info small { color: #5B5346; }
+    .msg { color: #9A3412; font-size: 14px; min-height: 20px; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="loginView" class="box hidden">
+    <h2>Owner login</h2>
+    <label>Email <input type="email" id="email"></label>
+    <label>Password <input type="password" id="password"></label>
+    <div class="msg" id="loginMsg"></div>
+    <button class="btn" id="loginBtn">Log in</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashView" class="hidden">
+    <div class="top">
+      <h1>Items</h1>
+      <button class="btn line" id="logoutBtn">Log out</button>
+    </div>
+    <div class="layout">
+      <div class="list" id="list">Loading...</div>
+
+      <div class="form">
+        <h2 id="formTitle">Add new item</h2>
+        <label>Item name <input type="text" id="name"></label>
+        <label>Price (₦) <input type="number" id="price" min="0"></label>
+        <label>Category
+          <select id="category">
+            <option>Snacks</option>
+            <option>Drinks</option>
+            <option>Combos</option>
+          </select>
+        </label>
+        <label>Photo <input type="file" id="photo" accept="image/*"></label>
+        <div class="msg" id="formMsg"></div>
+        <button class="btn orange" id="saveBtn">Save item</button>
+        <button class="btn line hidden" id="cancelBtn">Cancel edit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://tkhnxedtafgcatfodpzf.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const $ = id => document.getElementById(id);
+
+    let items = [];
+    let editingId = null;
+
+    // ---------- Login / logout ----------
+    async function checkSession() {
+      const { data } = await db.auth.getSession();
+      if (data.session) { showDash(); } else { showLogin(); }
+    }
+    function showLogin() { $('loginView').classList.remove('hidden'); $('dashView').classList.add('hidden'); }
+    function showDash() { $('loginView').classList.add('hidden'); $('dashView').classList.remove('hidden'); loadItems(); }
+
+    $('loginBtn').onclick = async () => {
+      $('loginMsg').textContent = '';
+      const { error } = await db.auth.signInWithPassword({
+        email: $('email').value.trim(),
+        password: $('password').value
+      });
+      if (error) { $('loginMsg').textContent = 'Wrong email or password.'; return; }
+      showDash();
+    };
+    $('logoutBtn').onclick = async () => { await db.auth.signOut(); showLogin(); };
+
+    // ---------- Load and show items ----------
+    async function loadItems() {
+      const { data, error } = await db.from('items').select('*').order('created_at');
+      if (error) { $('list').textContent = 'Could not load items.'; console.error(error); return; }
+      items = data;
+      renderList();
+    }
+
+    function renderList() {
+      const list = $('list');
+      list.innerHTML = '';
+      if (!items.length) { list.textContent = 'No items yet. Add one on the right.'; return; }
+
+      items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'row';
+
+        let pic;
+        if (item.image_url) { pic = document.createElement('img'); pic.src = item.image_url; pic.alt = item.name; }
+        else { pic = document.createElement('div'); pic.className = 'ph'; }
+
+        const info = document.createElement('div');
+        info.className = 'info';
+        const nm = document.createElement('div');
+        nm.textContent = item.name;
+        nm.style.fontWeight = '700';
+        const sm = document.createElement('small');
+        sm.textContent = item.category + ' · ₦' + Number(item.price).toLocaleString();
+        info.append(nm, sm);
+
+        const toggle = document.createElement('button');
+        toggle.className = 'btn line';
+        toggle.textContent = item.available ? 'Available' : 'Sold out';
+        toggle.onclick = () => toggleAvailable(item);
+
+        const edit = document.createElement('button');
+        edit.className = 'btn line';
+        edit.textContent = 'Edit';
+        edit.onclick = () => startEdit(item);
+
+        const del = document.createElement('button');
+        del.className = 'btn danger';
+        del.textContent = 'Delete';
+        del.onclick = () => deleteItem(item);
+
+        row.append(pic, info, toggle, edit, del);
+        list.appendChild(row);
+      });
+    }
+
+    // ---------- Actions ----------
+    async function toggleAvailable(item) {
+      const { error } = await db.from('items').update({ available: !item.available }).eq('id', item.id);
+      if (error) { alert('Could not update: ' + error.message); return; }
+      loadItems();
+    }
+
+    async function deleteItem(item) {
+      if (!confirm('Delete "' + item.name + '"?')) return;
+      const { error } = await db.from('items').delete().eq('id', item.id);
+      if (error) { alert('Could not delete: ' + error.message); return; }
+      loadItems();
+    }
+
+    function startEdit(item) {
+      editingId = item.id;
+      $('name').value = item.name;
+      $('price').value = item.price;
+      $('category').value = item.category;
+      $('photo').value = '';
+      $('formTitle').textContent = 'Edit item';
+      $('saveBtn').textContent = 'Save changes';
+      $('cancelBtn').classList.remove('hidden');
+      $('formMsg').textContent = 'Leave the photo empty to keep the current one.';
+    }
+
+    function resetForm() {
+      editingId = null;
+      $('name').value = '';
+      $('price').value = '';
+      $('category').value = 'Snacks';
+      $('photo').value = '';
+      $('formTitle').textContent = 'Add new item';
+      $('saveBtn').textContent = 'Save item';
+      $('cancelBtn').classList.add('hidden');
+      $('formMsg').textContent = '';
+    }
+    $('cancelBtn').onclick = resetForm;
+
+    async function uploadPhoto(file) {
+      const ext = file.name.split('.').pop();
+      const path = Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
+      const { error } = await db.storage.from('item-images').upload(path, file);
+      if (error) throw error;
+      return db.storage.from('item-images').getPublicUrl(path).data.publicUrl;
+    }
+
+    $('saveBtn').onclick = async () => {
+      const name = $('name').value.trim();
+      const price = $('price').value;
+      if (!name || price === '') { $('formMsg').textContent = 'Enter a name and a price.'; return; }
+
+      $('saveBtn').disabled = true;
+      $('formMsg').textContent = 'Saving...';
+      try {
+        const record = { name, price: Number(price), category: $('category').value };
+        const file = $('photo').files[0];
+        if (file) record.image_url = await uploadPhoto(file);
+
+        let result;
+        if (editingId) result = await db.from('items').update(record).eq('id', editingId);
+        else result = await db.from('items').insert(record);
+        if (result.error) throw result.error;
+
+        resetForm();
+        loadItems();
+      } catch (e) {
+        $('formMsg').textContent = 'Could not save: ' + e.message;
+      }
+      $('saveBtn').disabled = false;
+    };
+
+    checkSession();
+  </script>
+</body>
+</html>
