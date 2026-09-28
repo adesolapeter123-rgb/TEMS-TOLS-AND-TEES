@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book with us</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #FFF7EA; color: #1B2B22; margin: 0; padding: 20px; }
+    h1 { color: #1F4D3A; margin: 0 0 16px; }
+    .hidden { display: none !important; }
+    .box { background: #fff; border-radius: 18px; padding: 20px; max-width: 480px; margin: 0 auto; }
+    label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+    input, select, textarea { border: 1.5px solid #B8AD96; border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit; background: #fff; }
+    input, select { height: 46px; }
+    .btn { display: flex; align-items: center; justify-content: center; width: 100%; height: 52px; border: 0; border-radius: 12px; background: #C2410C; color: #fff; font-weight: 700; font-size: 16px; cursor: pointer; text-decoration: none; }
+    .btn.green { background: #1F7A4D; margin-top: 12px; }
+    .msg { color: #9A3412; font-size: 14px; min-height: 20px; margin-bottom: 8px; }
+    .back { display: block; max-width: 480px; margin: 0 auto 12px; color: #1F4D3A; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <a class="back" href="customer service.html">← Back to shop</a>
+
+  <div class="box">
+    <div id="formView">
+      <h1>Send a request</h1>
+      <label>What do you need?
+        <select id="type">
+          <option value="Catering">Catering</option>
+          <option value="Rental">Tent / chair rental</option>
+        </select>
+      </label>
+      <label>Your name <input type="text" id="name" maxlength="100"></label>
+      <label>Phone number <input type="tel" id="phone" maxlength="30" placeholder="e.g. 0803 123 4567"></label>
+      <label>Event date <input type="date" id="date"></label>
+      <label id="guestsRow">Number of guests <input type="number" id="guests" min="1"></label>
+      <label>Event location <input type="text" id="location" maxlength="200"></label>
+      <label>Details <textarea id="details" rows="3" maxlength="1000" placeholder="Package, items, quantity, anything else"></textarea></label>
+      <div class="msg" id="msg"></div>
+      <button class="btn" id="sendBtn">Send request</button>
+    </div>
+
+    <div id="doneView" class="hidden">
+      <h1>Request sent</h1>
+      <p>Thank you! We will contact you to confirm. To get a faster reply, you can also message us on WhatsApp.</p>
+      <a class="btn green" id="waLink" target="_blank" rel="noopener">Message us on WhatsApp</a>
+      <a class="btn" style="margin-top:12px" href="customer service.html">Back to shop</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://tkhnxedtafgcatfodpzf.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const WHATSAPP_NUMBER = '2348078244793'; // <-- the owner's number
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const $ = id => document.getElementById(id);
+
+    // Earliest date = today
+    $('date').min = new Date().toISOString().split('T')[0];
+
+    // Pre-fill from the link (e.g. book.html?rental=Tent)
+    const params = new URLSearchParams(location.search);
+    if (params.get('rental')) {
+      $('type').value = 'Rental';
+      $('details').value = 'I would like to rent: ' + params.get('rental');
+    } else if (params.get('type') === 'Catering') {
+      $('type').value = 'Catering';
+    }
+
+    function updateFields() {
+      $('guestsRow').classList.toggle('hidden', $('type').value === 'Rental');
+    }
+    $('type').onchange = updateFields;
+    updateFields();
+
+    $('sendBtn').onclick = async () => {
+      $('msg').textContent = '';
+      const type = $('type').value;
+      const name = $('name').value.trim();
+      const phone = $('phone').value.trim();
+      const date = $('date').value;
+      const guests = $('guests').value;
+
+      if (!name || !phone || !date) { $('msg').textContent = 'Please fill in your name, phone number, and date.'; return; }
+      if (type === 'Catering' && !guests) { $('msg').textContent = 'Please enter the number of guests.'; return; }
+
+      $('sendBtn').disabled = true;
+      $('sendBtn').textContent = 'Sending...';
+
+      const { error } = await db.from('bookings').insert({
+        type,
+        customer_name: name,
+        phone,
+        event_date: date,
+        guests: type === 'Catering' ? Number(guests) : null,
+        location: $('location').value.trim() || null,
+        details: $('details').value.trim() || null
+      });
+
+      if (error) {
+        console.error(error);
+        $('msg').textContent = 'Could not send your request. Please try again.';
+        $('sendBtn').disabled = false;
+        $('sendBtn').textContent = 'Send request';
+        return;
+      }
+
+      const text = 'Hello, I just sent a ' + type.toLowerCase() + ' request for ' + date + '. My name is ' + name + '.';
+      $('waLink').href = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(text);
+      $('formView').classList.add('hidden');
+      $('doneView').classList.remove('hidden');
+    };
+  </script>
+</body>
+</html>

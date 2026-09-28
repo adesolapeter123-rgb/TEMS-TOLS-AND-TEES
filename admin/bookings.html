@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TEMS TOLS AND TEES | Bookings</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #FFF7EA; color: #1B2B22; margin: 0; padding: 20px; }
+    h1 { color: #1F4D3A; margin: 0 0 16px; }
+    .brand-lockup { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .brand-mark {
+      width: 68px;
+      height: 68px;
+      flex-shrink: 0;
+      object-fit: cover;
+      border-radius: 50%;
+      filter: drop-shadow(0 6px 12px rgba(31,77,58,0.14));
+    }
+    .brand-name {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #1F4D3A;
+      margin: 0;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hidden { display: none !important; }
+    .nav { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .nav a { padding: 10px 16px; border-radius: 999px; border: 1.5px solid #1F4D3A; color: #1F4D3A; text-decoration: none; font-weight: 700; }
+    .nav a.active { background: #1F4D3A; color: #fff; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tabs button { height: 44px; padding: 0 18px; border: 1.5px solid #1F4D3A; border-radius: 999px; background: transparent; color: #1F4D3A; font-size: 15px; cursor: pointer; }
+    .tabs button.active { background: #1F4D3A; color: #fff; font-weight: 700; }
+    .card { background: #fff; border-radius: 18px; padding: 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 640px; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .badge { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; background: #F8D9A0; }
+    .badge.Accepted { background: #CFE3D6; color: #1F4D3A; }
+    .badge.Declined { background: #E6DDCB; color: #4A4234; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .btn { height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #1F4D3A; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; text-decoration: none; }
+    .btn.line { background: transparent; border: 1.5px solid #1F4D3A; color: #1F4D3A; }
+    .btn.danger { background: transparent; border: 1.5px solid #9A3412; color: #9A3412; }
+    .btn.wa { background: #1F7A4D; }
+    small { color: #5B5346; }
+  </style>
+</head>
+<body>
+
+  <div id="needLogin" class="hidden">
+    <p>Please <a href="index.html">log in</a> first.</p>
+  </div>
+
+  <div id="dashView" class="hidden">
+    <div class="brand-lockup">
+      <img class="brand-mark" src="../assets/tems-tols-and-tees-logo.png" alt="TEMS TOLS AND TEES logo">
+      <div class="brand-name">TEMS TOLS AND TEES</div>
+    </div>
+    <div class="nav">
+      <a href="index.html">Items</a>
+      <a href="../rentals.html">Rentals</a>
+      <a href="bookings.html" class="active">Bookings</a>
+      <a href="../index.html">View shop</a>
+    </div>
+    <h1>Booking requests</h1>
+    <div class="tabs" id="tabs"></div>
+    <div id="list">Loading...</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://tkhnxedtafgcatfodpzf.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const $ = id => document.getElementById(id);
+
+    const filters = ['All', 'New', 'Accepted', 'Declined'];
+    let current = 'New';
+    let bookings = [];
+
+    function waLink(phone) {
+      let p = phone.replace(/\D/g, '');
+      if (p.startsWith('0')) p = '234' + p.slice(1); // Nigerian numbers
+      return 'https://wa.me/' + p;
+    }
+
+    async function start() {
+      const { data } = await db.auth.getSession();
+      if (!data.session) { $('needLogin').classList.remove('hidden'); return; }
+      $('dashView').classList.remove('hidden');
+      load();
+    }
+
+    async function load() {
+      const { data, error } = await db.from('bookings').select('*').order('created_at', { ascending: false });
+      if (error) { $('list').textContent = 'Could not load bookings.'; console.error(error); return; }
+      bookings = data;
+      render();
+    }
+
+    async function setStatus(id, status) {
+      const { error } = await db.from('bookings').update({ status }).eq('id', id);
+      if (error) { alert('Could not update: ' + error.message); return; }
+      load();
+    }
+
+    async function remove(b) {
+      if (!confirm('Delete the request from ' + b.customer_name + '?')) return;
+      const { error } = await db.from('bookings').delete().eq('id', b.id);
+      if (error) { alert('Could not delete: ' + error.message); return; }
+      load();
+    }
+
+    function line(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d;
+    }
+
+    function render() {
+      const tabs = $('tabs');
+      tabs.innerHTML = '';
+      filters.forEach(f => {
+        const b = document.createElement('button');
+        const n = f === 'All' ? bookings.length : bookings.filter(x => x.status === f).length;
+        b.textContent = f + ' (' + n + ')';
+        if (f === current) b.className = 'active';
+        b.onclick = () => { current = f; render(); };
+        tabs.appendChild(b);
+      });
+
+      const list = $('list');
+      list.innerHTML = '';
+      const shown = bookings.filter(b => current === 'All' || b.status === current);
+      if (!shown.length) { list.textContent = 'Nothing here.'; return; }
+
+      shown.forEach(b => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const top = document.createElement('div');
+        top.className = 'top';
+        const title = document.createElement('strong');
+        title.textContent = b.type + ' · ' + b.customer_name;
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + b.status;
+        badge.textContent = b.status;
+        top.append(title, badge);
+
+        card.append(top, line('Phone: ' + b.phone), line('Event date: ' + b.event_date));
+        if (b.guests) card.append(line('Guests: ' + b.guests));
+        if (b.location) card.append(line('Location: ' + b.location));
+        if (b.details) card.append(line('Details: ' + b.details));
+        const sent = document.createElement('small');
+        sent.textContent = 'Received ' + new Date(b.created_at).toLocaleString();
+        card.append(sent);
+
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+
+        const wa = document.createElement('a');
+        wa.className = 'btn wa';
+        wa.textContent = 'WhatsApp';
+        wa.href = waLink(b.phone);
+        wa.target = '_blank';
+        wa.rel = 'noopener';
+
+        const accept = document.createElement('button');
+        accept.className = 'btn';
+        accept.textContent = 'Accept';
+        accept.onclick = () => setStatus(b.id, 'Accepted');
+
+        const decline = document.createElement('button');
+        decline.className = 'btn line';
+        decline.textContent = 'Decline';
+        decline.onclick = () => setStatus(b.id, 'Declined');
+
+        const del = document.createElement('button');
+        del.className = 'btn danger';
+        del.textContent = 'Delete';
+        del.onclick = () => remove(b);
+
+        actions.append(wa, accept, decline, del);
+        card.append(actions);
+        list.appendChild(card);
+      });
+    }
+
+    start();
+  </script>
+</body>
+</html>
