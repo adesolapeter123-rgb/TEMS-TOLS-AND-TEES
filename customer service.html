@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snack Shop</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #FFF7EA; color: #1B2B22; margin: 0; padding: 20px; }
+    h1 { color: #1F4D3A; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tabs button { height: 44px; padding: 0 18px; border: 1.5px solid #1F4D3A; border-radius: 999px; background: transparent; color: #1F4D3A; font-size: 15px; cursor: pointer; }
+    .tabs button.active { background: #1F4D3A; color: #fff; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .card { background: #fff; border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .card img, .card .ph { width: 100%; height: 96px; object-fit: cover; border-radius: 12px; background: #F8D9A0; }
+    .card button { height: 44px; border: 0; border-radius: 12px; background: #C2410C; color: #fff; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Shop</h1>
+  <div class="tabs" id="tabs"></div>
+  <div class="grid" id="grid">Loading...</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://tkhnxedtafgcatfodpzf.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const categories = ['All', 'Snacks', 'Drinks', 'Combos'];
+    let allItems = [];
+    let current = 'All';
+
+    async function loadItems() {
+      const { data, error } = await db
+        .from('items')
+        .select('*')
+        .eq('available', true)
+        .order('created_at');
+      if (error) {
+        document.getElementById('grid').textContent = 'Could not load items.';
+        console.error(error);
+        return;
+      }
+      allItems = data;
+      render();
+    }
+
+    function render() {
+      const tabs = document.getElementById('tabs');
+      tabs.innerHTML = '';
+      categories.forEach(c => {
+        const b = document.createElement('button');
+        b.textContent = c;
+        if (c === current) b.className = 'active';
+        b.onclick = () => { current = c; render(); };
+        tabs.appendChild(b);
+      });
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      const shown = allItems.filter(i => current === 'All' || i.category === current);
+      if (!shown.length) { grid.textContent = 'No items yet.'; return; }
+
+      shown.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        let pic;
+        if (item.image_url) { pic = document.createElement('img'); pic.src = item.image_url; pic.alt = item.name; }
+        else { pic = document.createElement('div'); pic.className = 'ph'; }
+
+        const name = document.createElement('div');
+        name.textContent = item.name;
+        name.style.fontWeight = '700';
+
+        const price = document.createElement('div');
+        price.textContent = '₦' + Number(item.price).toLocaleString();
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Add to cart';
+
+        card.append(pic, name, price, btn);
+        grid.appendChild(card);
+      });
+    }
+
+    loadItems();
+  </script>
+</body>
+</html>
