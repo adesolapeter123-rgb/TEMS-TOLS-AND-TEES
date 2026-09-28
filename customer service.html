@@ -5,32 +5,165 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Snack Shop</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; background: #FFF7EA; color: #1B2B22; margin: 0; padding: 20px; }
-    h1 { color: #1F4D3A; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    h1, h2 { color: #1F4D3A; margin: 0; }
+    .hidden { display: none !important; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .cart-btn { height: 44px; padding: 0 16px; border: 1.5px solid #1F4D3A; border-radius: 999px; background: transparent; color: #1F4D3A; font-weight: 700; font-size: 15px; cursor: pointer; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
     .tabs button { height: 44px; padding: 0 18px; border: 1.5px solid #1F4D3A; border-radius: 999px; background: transparent; color: #1F4D3A; font-size: 15px; cursor: pointer; }
     .tabs button.active { background: #1F4D3A; color: #fff; font-weight: 700; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
     .card { background: #fff; border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
     .card img, .card .ph { width: 100%; height: 96px; object-fit: cover; border-radius: 12px; background: #F8D9A0; }
     .card button { height: 44px; border: 0; border-radius: 12px; background: #C2410C; color: #fff; font-weight: 700; cursor: pointer; }
+
+    /* Cart panel */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 10; }
+    .panel { position: fixed; top: 0; right: 0; bottom: 0; width: 100%; max-width: 400px; background: #fff; z-index: 11; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .panel-top { display: flex; justify-content: space-between; align-items: center; }
+    .line { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #F0E6D2; }
+    .line .info { flex: 1; }
+    .line small { color: #5B5346; }
+    .qty { display: flex; align-items: center; gap: 8px; }
+    .qty button { width: 36px; height: 36px; border: 1.5px solid #1F4D3A; border-radius: 10px; background: transparent; color: #1F4D3A; font-size: 18px; font-weight: 700; cursor: pointer; }
+    .total { display: flex; justify-content: space-between; font-weight: 700; font-size: 18px; padding: 8px 0; }
+    label { display: flex; flex-direction: column; gap: 6px; font-weight: 700; font-size: 14px; }
+    input, textarea { border: 1.5px solid #B8AD96; border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit; }
+    .send { height: 52px; border: 0; border-radius: 12px; background: #1F7A4D; color: #fff; font-weight: 700; font-size: 16px; cursor: pointer; }
+    .close { border: 0; background: transparent; font-size: 28px; cursor: pointer; color: #1F4D3A; }
+    .msg { color: #9A3412; font-size: 14px; min-height: 18px; }
   </style>
 </head>
 <body>
-  <h1>Shop</h1>
+
+  <div class="header">
+    <h1>Shop</h1>
+    <button class="cart-btn" id="cartBtn">Cart (0)</button>
+  </div>
   <div class="tabs" id="tabs"></div>
   <div class="grid" id="grid">Loading...</div>
+
+  <!-- Cart panel -->
+  <div class="overlay hidden" id="overlay"></div>
+  <div class="panel hidden" id="panel">
+    <div class="panel-top">
+      <h2>Your cart</h2>
+      <button class="close" id="closeBtn" aria-label="Close cart">&times;</button>
+    </div>
+    <div id="cartLines"></div>
+    <div class="total"><span>Total</span><span id="cartTotal">₦0</span></div>
+    <label>Your name <input type="text" id="custName"></label>
+    <label>Destination <textarea id="custNote" rows="2" placeholder="Delivery address, time, etc."></textarea></label>
+    <div class="msg" id="cartMsg"></div>
+    <button class="send" id="sendBtn">Send order on WhatsApp</button>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const SUPABASE_URL = 'https://tkhnxedtafgcatfodpzf.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
+    const WHATSAPP_NUMBER = '+23408078244793'; // <-- put the owner's number here
     const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const $ = id => document.getElementById(id);
+    const naira = n => '₦' + Number(n).toLocaleString();
 
     const categories = ['All', 'Snacks', 'Drinks', 'Combos'];
     let allItems = [];
     let current = 'All';
 
+    // ---------- Cart ----------
+    let cart = [];
+    try { cart = JSON.parse(localStorage.getItem('cart') || '[]'); } catch (e) { cart = []; }
+
+    function saveCart() {
+      try { localStorage.setItem('cart', JSON.stringify(cart)); } catch (e) {}
+      renderCart();
+    }
+
+    function addToCart(item) {
+      const found = cart.find(c => c.id === item.id);
+      if (found) found.qty += 1;
+      else cart.push({ id: item.id, name: item.name, price: Number(item.price), qty: 1 });
+      saveCart();
+    }
+
+    function changeQty(id, delta) {
+      const line = cart.find(c => c.id === id);
+      if (!line) return;
+      line.qty += delta;
+      if (line.qty <= 0) cart = cart.filter(c => c.id !== id);
+      saveCart();
+    }
+
+    function cartTotal() { return cart.reduce((sum, c) => sum + c.price * c.qty, 0); }
+
+    function renderCart() {
+      const count = cart.reduce((sum, c) => sum + c.qty, 0);
+      $('cartBtn').textContent = 'Cart (' + count + ')';
+      $('cartTotal').textContent = naira(cartTotal());
+
+      const box = $('cartLines');
+      box.innerHTML = '';
+      if (!cart.length) { box.textContent = 'Your cart is empty.'; return; }
+
+      cart.forEach(c => {
+        const row = document.createElement('div');
+        row.className = 'line';
+
+        const info = document.createElement('div');
+        info.className = 'info';
+        const nm = document.createElement('div');
+        nm.textContent = c.name;
+        nm.style.fontWeight = '700';
+        const sm = document.createElement('small');
+        sm.textContent = naira(c.price) + ' each';
+        info.append(nm, sm);
+
+        const qty = document.createElement('div');
+        qty.className = 'qty';
+        const minus = document.createElement('button');
+        minus.textContent = '−';
+        minus.onclick = () => changeQty(c.id, -1);
+        const num = document.createElement('span');
+        num.textContent = c.qty;
+        const plus = document.createElement('button');
+        plus.textContent = '+';
+        plus.onclick = () => changeQty(c.id, 1);
+        qty.append(minus, num, plus);
+
+        row.append(info, qty);
+        box.appendChild(row);
+      });
+    }
+
+    function openCart() { $('overlay').classList.remove('hidden'); $('panel').classList.remove('hidden'); }
+    function closeCart() { $('overlay').classList.add('hidden'); $('panel').classList.add('hidden'); }
+    $('cartBtn').onclick = openCart;
+    $('closeBtn').onclick = closeCart;
+    $('overlay').onclick = closeCart;
+
+    $('sendBtn').onclick = () => {
+      $('cartMsg').textContent = '';
+      if (!cart.length) { $('cartMsg').textContent = 'Your cart is empty.'; return; }
+      const name = $('custName').value.trim();
+      if (!name) { $('cartMsg').textContent = 'Please enter your name.'; return; }
+
+      let msg = 'Hello, I would like to order:\n';
+      cart.forEach(c => { msg += '- ' + c.qty + ' x ' + c.name + ' (' + naira(c.price * c.qty) + ')\n'; });
+      msg += '\nTotal: ' + naira(cartTotal());
+      msg += '\nName: ' + name;
+      const note = $('custNote').value.trim();
+      if (note) msg += '\nNote: ' + note;
+
+      window.open('https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(msg), '_blank');
+      cart = [];
+      saveCart();
+      closeCart();
+    };
+
+    // ---------- Shop ----------
     async function loadItems() {
       const { data, error } = await db
         .from('items')
@@ -38,7 +171,7 @@ const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
         .eq('available', true)
         .order('created_at');
       if (error) {
-        document.getElementById('grid').textContent = 'Could not load items.';
+        $('grid').textContent = 'Could not load items.';
         console.error(error);
         return;
       }
@@ -47,7 +180,7 @@ const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
     }
 
     function render() {
-      const tabs = document.getElementById('tabs');
+      const tabs = $('tabs');
       tabs.innerHTML = '';
       categories.forEach(c => {
         const b = document.createElement('button');
@@ -57,7 +190,7 @@ const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
         tabs.appendChild(b);
       });
 
-      const grid = document.getElementById('grid');
+      const grid = $('grid');
       grid.innerHTML = '';
       const shown = allItems.filter(i => current === 'All' || i.category === current);
       if (!shown.length) { grid.textContent = 'No items yet.'; return; }
@@ -75,16 +208,18 @@ const SUPABASE_KEY = 'sb_publishable_LO1BtxVst1NB6pGM7mZv1w_IqpO3c4B';
         name.style.fontWeight = '700';
 
         const price = document.createElement('div');
-        price.textContent = '₦' + Number(item.price).toLocaleString();
+        price.textContent = naira(item.price);
 
         const btn = document.createElement('button');
         btn.textContent = 'Add to cart';
+        btn.onclick = () => addToCart(item);
 
         card.append(pic, name, price, btn);
         grid.appendChild(card);
       });
     }
 
+    renderCart();
     loadItems();
   </script>
 </body>
